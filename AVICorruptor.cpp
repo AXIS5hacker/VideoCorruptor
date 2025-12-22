@@ -145,9 +145,9 @@ void AVICorruptor::applyCorruption() {
                 corruption_positions.begin() + processed + chunk);
             
             for (auto pos : chunk_list) {
-                //int rand_val = dist(rng);
+                int rand_val = dist(rng);
                 // 随机破坏方式
-                int rand_val = 4;
+                //int rand_val = 4;
                 int bit_pos;
                 switch (rand_val) {
                 case 0:
