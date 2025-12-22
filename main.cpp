@@ -1,4 +1,5 @@
 #include<iostream>
+#include <cctype>
 #include"MP4Corruptor.h"
 #include"AVICorruptor.h"
 using namespace std;
