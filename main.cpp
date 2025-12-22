@@ -16,7 +16,7 @@ int main(int argc, char* argv[]) {
     string output_file = argv[2];
     string fmt = argv[3];
     VideoCorruptor* corruptor = nullptr;
-    transform(fmt.begin(), fmt.end(), fmt.begin(), tolower);
+    transform(fmt.begin(), fmt.end(), fmt.begin(), (int (*)(int))tolower);
     if (fmt=="avi") {
 		corruptor = new AVICorruptor();
     }
