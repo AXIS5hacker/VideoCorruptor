@@ -32,14 +32,15 @@ int main(int argc, char* argv[]) {
     if (!corruptor->loadFile(input_file)) {
         return 1;
     }
-
     corruptor->printFileInfo();
     corruptor->applyCorruption();
 
     if (corruptor->saveFile(output_file)) {
+        delete corruptor;
         cout << "Corrupted video saved to: " << output_file << endl;
     }
     else {
+        delete corruptor;
         cerr << "Save failed." << endl;
         return 1;
     }
