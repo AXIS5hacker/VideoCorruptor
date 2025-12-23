@@ -10,10 +10,12 @@
 #include <map>
 
 // 帧头部保护字节数
-#define MP4_FRAME_HEADER_PROTECT_SIZE 512
+#define MP4_FRAME_HEADER_PROTECT_SIZE 32
+#define MP4_AUDIO_FRAME_HEADER_PROTECT_SIZE 16
 // 最小帧间隔
-#define MP4_MIN_FRAME_INTERVAL 256
-// 每处理100万字节报告一次进度
+#define MP4_MIN_FRAME_INTERVAL 1024
+#define MP4_MIN_AUDIO_FRAME_INTERVAL 512
+// report every N glitches
 #define MP4_PROGRESS_REPORT_INTERVAL 100
 
 /**
@@ -31,13 +33,21 @@ public:
         stages= {
         {0.0, 0.05, 0.0002,1},
         {0.05, 0.15, 0.001,1},
-        {0.15, 0.30, 0.0025,2},
-        {0.30, 0.50, 0.005,3},
-        {0.50, 0.70, 0.01,5},
-        {0.70, 0.90, 0.02,8},
-        {0.90, 1.00, 0.04,15}
+        {0.15, 0.30, 0.002,2},
+        {0.30, 0.50, 0.004,2},
+        {0.50, 0.70, 0.01,3},
+        {0.70, 0.90, 0.02,3},
+        {0.90, 1.00, 0.035,5}
         };
     }
+
+    struct MdatInfo {
+        size_t offset;   // mdat原子起始偏移
+        size_t size;     // mdat原子总大小（包含头部）
+		char if_extended; // 是否为扩展大小
+    };
+
+	vector<MdatInfo> mdat_atoms;
 
 	//Load MP4 file into memory
     bool loadFile(const string& filename) override;
@@ -55,9 +65,14 @@ private:
     //find potential frame start positions
     vector<size_t> findPotentialFrameStarts() override;
 
+    // check potential audio frame start positions
+    vector<size_t> findPotentialAudioFrameStarts();
+
     //pre-compute protected mask
     void precomputeProtectedMask() override;
     
+    vector<MdatInfo> getMdatInfo();
+
     void corruptBytesBatch(const std::vector<size_t>& positions, double intensity, int phase,int burst_size);
 };
 

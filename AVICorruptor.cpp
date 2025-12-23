@@ -129,7 +129,7 @@ void AVICorruptor::applyCorruption() {
 
         // 批量破坏
         stage_idx = stage_idx > 6 ? 6 : stage_idx;
-        std::uniform_int_distribution<int> dist(min(0,(int)stage_idx-2), stage_idx);
+        std::uniform_int_distribution<int> dist(min(0,(int)stage_idx-1), stage_idx);
         
 
         size_t processed = 0;
@@ -174,10 +174,10 @@ void AVICorruptor::applyCorruption() {
                         // shift
                         if (!protected_mask[pos + j]) {
                             if (dir_dist(rng)) {
-                                file_data[pos + j] <<= 1;
+                                file_data[pos + j] <<= 1+int(stage.intensity*4);
                             }
                             else {
-                                file_data[pos + j] >>= 1;
+                                file_data[pos + j] >>= 1 + int(stage.intensity * 4);
                             }
                         }
                     }
@@ -192,7 +192,17 @@ void AVICorruptor::applyCorruption() {
                 case 5:
 					// voltage spike simulation
                     for (int j = 0; j < burst_size; j++) {
-                        if (!protected_mask[pos + j])file_data[pos + j] ^= 0x55;
+                        
+                        if (!protected_mask[pos + j]) {
+                            if (dir_dist(rng)) {
+                                //random invert
+                                if (!protected_mask[pos + j])file_data[pos + j] ^= byte_dist(rng);
+                            }
+                            else {
+								//fixed pattern invert
+                                if (!protected_mask[pos + j])file_data[pos + j] ^= 0x55;
+                            }
+                        }
                     }
                     break;
                 case 6:
