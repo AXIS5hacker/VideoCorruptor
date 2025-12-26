@@ -224,9 +224,8 @@ void AVICorruptor::applyCorruption() {
                     // copying from previous location
                     size_t copy_offset;
 
-                    copy_offset = 5000 + pos_dist(rng) % 50000;
-
                     for (int j = 0; j < burst_size; j++) {
+                        copy_offset = 5000 + pos_dist(rng) % 50000;
                         if (!protected_mask[pos + j])file_data[pos + j] = file_data[pos - copy_offset + j];
                     }
                     break;
