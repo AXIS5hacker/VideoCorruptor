@@ -328,10 +328,8 @@ void MP4Corruptor::corruptBytesBatch(const std::vector<size_t>& positions, doubl
             // copying from previous location
 
             size_t copy_offset;
-
-            copy_offset = 5000 + x_dist(rng);
-
             for (int j = 0; j < burst_size; j++) {
+                copy_offset = 5000 + x_dist(rng);
                 if (!protected_mask[pos + j])file_data[pos + j] = file_data[pos - copy_offset + j];
             }
             break;
