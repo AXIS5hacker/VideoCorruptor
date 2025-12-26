@@ -5,56 +5,72 @@ using namespace std;
 // 查找可能的视频帧起始位置
 std::vector<size_t> AVICorruptor::findPotentialFrameStarts() {
     std::vector<size_t> frame_starts;
-    for (size_t i = AVI_HEADER_PROTECT_SIZE; i < file_data.size() - 8; ++i) {
-        // 检测视频帧标识（常见FourCC）
-        if (file_data[i] == '0' && file_data[i + 1] == '0' &&
-            file_data[i + 2] == 'd' && file_data[i + 3] == 'c') {
-            frame_starts.push_back(i);
-            i += 3; // 跳过00dc标识
-        }
-        else if (file_data[i] == 'd' && file_data[i + 1] == 'b') {
-            frame_starts.push_back(i);
-            i += 1; // 跳过db标识
+    for (size_t i = AVI_HEADER_PROTECT_SIZE; i < file_data.size() - AVI_TAIL_PROTECT_SIZE; ++i) {
+        // check frame markers: 00dc, 01wb, db, etc.
+        if ((file_data[i] == '0' || file_data[i] == '1') && (file_data[i + 1] == '0' || file_data[i + 1] == '1')) {
+			char c = file_data[i + 2];
+			char d = file_data[i + 3];
+            if ((c == 'd' || c == 'w') && (d == 'c' || d == 'b')) {
+				frame_starts.push_back(i);
+            }
         }
     }
     // 去重排序并过滤
     std::sort(frame_starts.begin(), frame_starts.end());
     frame_starts.erase(std::unique(frame_starts.begin(), frame_starts.end()), frame_starts.end());
-    std::vector<size_t> filtered;
-    size_t last = 0;
-    for (auto pos : frame_starts) {
-        if (pos - last >= AVI_MIN_FRAME_INTERVAL) {
-            filtered.push_back(pos);
-            last = pos;
-        }
-    }
     
-    return filtered;
+    //no need to filter
+    
+    return frame_starts;
 }
 
 // 预计算保护区域
 void AVICorruptor::precomputeProtectedMask() {
     protected_mask.assign(file_data.size(), false);
 
-    // 保护AVI头
+    // protect avi header
     size_t header_size = min((size_t)AVI_HEADER_PROTECT_SIZE, file_data.size());
     std::fill(protected_mask.begin(), protected_mask.begin() + header_size, true);
 
-    // 保护movi列表头
-    size_t movi_pos = file_data.size();
-    for (size_t i = 0; i < file_data.size() - 8; ++i) {
-        if (file_data[i] == 'l' && file_data[i + 1] == 'i' &&
-            file_data[i + 2] == 's' && file_data[i + 3] == 't' &&
-            file_data[i + 4] == 'm' && file_data[i + 5] == 'o' &&
-            file_data[i + 6] == 'v' && file_data[i + 7] == 'i') {
-            movi_pos = i;
-            break;
-        }
+	const char* signatures[] = { "RIFF", "LIST","idx1", "hdrl", "avih", "strl", "strh", "strf","strd","movi","JUNK"};
+	// detect LIST chunks
+    vector<size_t> list_begins;
+    size_t idx_pos;
+	// protect idx1 list and other important headers
+    for (size_t i = header_size; i < file_data.size() - 4; ++i) {
+        
+        for(const char* sig : signatures){
+            if (file_data[i] == sig[0] && file_data[i + 1] == sig[1] &&
+                file_data[i + 2] == sig[2] && file_data[i + 3] == sig[3]) {
+				protected_mask[i] = true;
+                protected_mask[i+1] = true;
+                protected_mask[i + 2] = true;
+                protected_mask[i + 3] = true;
+                // check for RIFF and LIST signatures
+                if (strcmp(sig, "LIST") == 0) {
+                    list_begins.push_back(i);
+				}
+                if(strcmp(sig, "idx1") == 0){
+                    idx_pos = i;
+				}
+                break;
+            }
+		}
     }
-    size_t movi_end = std::min(movi_pos + AVI_MOVI_LIST_PROTECT_SIZE, file_data.size());
-    std::fill(protected_mask.begin() + movi_pos, protected_mask.begin() + movi_end, true);
+
+    // protect idx1 index
+    if (upper_bound(list_begins.begin(), list_begins.end(), idx_pos) == list_begins.end()) {
+		fill(protected_mask.begin() + min(idx_pos, file_data.size()), protected_mask.end(), true);
+    }
+    else {
+        size_t next_list_pos = *upper_bound(list_begins.begin(), list_begins.end(), idx_pos);
+        fill(protected_mask.begin() + min(idx_pos, file_data.size()), protected_mask.begin() + min(next_list_pos, file_data.size()), true);
+    }
+
+    // get frame headers
 	vector<size_t> frame_starts = findPotentialFrameStarts();
     frmcount = frame_starts.size();
+
     // 保护已检测到的帧头
     for (auto pos : frame_starts) {
         size_t frame_end = std::min(pos + AVI_FRAME_HEADER_SIZE, file_data.size());
@@ -101,11 +117,13 @@ void AVICorruptor::applyCorruption() {
 
     auto frame_starts = findPotentialFrameStarts();
     std::cout << "Found " << frame_starts.size() << " potential frame starts" << std::endl;
-
+    size_t glitch_range = file_data.size() - AVI_HEADER_PROTECT_SIZE - AVI_TAIL_PROTECT_SIZE;
+    std::cout << "Safe zone has " << glitch_range << " bytes." << std::endl;
     for (size_t stage_idx = 0; stage_idx < stages.size(); ++stage_idx) {
         const auto& stage = stages[stage_idx];
-        size_t start = static_cast<size_t>(stage.start_ratio * file_data.size());
-        size_t end = static_cast<size_t>(stage.end_ratio * file_data.size());
+		
+        size_t start = static_cast<size_t>(AVI_HEADER_PROTECT_SIZE + stage.start_ratio * glitch_range);
+        size_t end = static_cast<size_t>(AVI_HEADER_PROTECT_SIZE + stage.end_ratio * glitch_range);
         size_t target_glitches = static_cast<size_t>(stage.intensity * frmcount);
         
         std::cout << "Stage " << (stage_idx + 1) << ": "
@@ -129,7 +147,7 @@ void AVICorruptor::applyCorruption() {
 
         // 批量破坏
         stage_idx = stage_idx > 6 ? 6 : stage_idx;
-        std::uniform_int_distribution<int> dist(min(0,(int)stage_idx-1), stage_idx);
+        std::uniform_int_distribution<int> dist(min(0,(int)stage_idx-2), stage_idx);
         
 
         size_t processed = 0;
@@ -159,8 +177,10 @@ void AVICorruptor::applyCorruption() {
                     break;
                 case 1:
                     for (int j = 0; j < burst_size; j++) {
-                    // low bits substitution
-                        if (!protected_mask[pos + j]) file_data[pos + j] = (file_data[pos + j] & 0xF0) | (static_cast<uint8_t>(byte_dist(rng)) & 0x0F);
+                    //bits random substitution
+                        if (!protected_mask[pos + j]) {
+                            file_data[pos + j] = (file_data[pos + j] & 0xF0) | (static_cast<uint8_t>(byte_dist(rng)) & 0x0F);
+                        }
                     }
                     break;
                 case 2:
@@ -174,10 +194,10 @@ void AVICorruptor::applyCorruption() {
                         // shift
                         if (!protected_mask[pos + j]) {
                             if (dir_dist(rng)) {
-                                file_data[pos + j] <<= 1+int(stage.intensity*4);
+                                file_data[pos + j] <<= 1+int(stage.intensity*6);
                             }
                             else {
-                                file_data[pos + j] >>= 1 + int(stage.intensity * 4);
+                                file_data[pos + j] >>= 1 + int(stage.intensity * 6);
                             }
                         }
                     }
@@ -194,23 +214,17 @@ void AVICorruptor::applyCorruption() {
                     for (int j = 0; j < burst_size; j++) {
                         
                         if (!protected_mask[pos + j]) {
-                            if (dir_dist(rng)) {
-                                //random invert
-                                if (!protected_mask[pos + j])file_data[pos + j] ^= byte_dist(rng);
-                            }
-                            else {
-								//fixed pattern invert
-                                if (!protected_mask[pos + j])file_data[pos + j] ^= 0x55;
-                            }
+                            
+                            file_data[pos + j] ^= byte_dist(rng);
+                            
                         }
                     }
                     break;
                 case 6:
                     // copying from previous location
-
                     size_t copy_offset;
 
-                    copy_offset = 5000 + pos_dist(rng) % 20000;
+                    copy_offset = 5000 + pos_dist(rng) % 50000;
 
                     for (int j = 0; j < burst_size; j++) {
                         if (!protected_mask[pos + j])file_data[pos + j] = file_data[pos - copy_offset + j];
@@ -244,6 +258,6 @@ void AVICorruptor::printFileInfo() {
     }
     std::cout << "Protected regions:" << std::endl;
     std::cout << "- Header: " << AVI_HEADER_PROTECT_SIZE << " bytes" << std::endl;
-    std::cout << "- MOVI list: " << AVI_MOVI_LIST_PROTECT_SIZE << " bytes" << std::endl;
+    std::cout << "- idx1 index: " << AVI_TAIL_PROTECT_SIZE << " bytes" << std::endl;
     std::cout << "- Frame headers: " << AVI_FRAME_HEADER_SIZE << " bytes" << std::endl;
 }
