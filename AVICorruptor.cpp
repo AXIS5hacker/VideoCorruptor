@@ -61,10 +61,12 @@ void AVICorruptor::precomputeProtectedMask() {
     // protect idx1 index
     if (upper_bound(list_begins.begin(), list_begins.end(), idx_pos) == list_begins.end()) {
 		fill(protected_mask.begin() + min(idx_pos, file_data.size()), protected_mask.end(), true);
+        cout << "idx1 list detected from byte #" << min(idx_pos, file_data.size()) << " to #" << file_data.size() - 1 <<" - protected" << endl;
     }
     else {
         size_t next_list_pos = *upper_bound(list_begins.begin(), list_begins.end(), idx_pos);
         fill(protected_mask.begin() + min(idx_pos, file_data.size()), protected_mask.begin() + min(next_list_pos, file_data.size()), true);
+        cout << "idx1 list detected from " << min(idx_pos, file_data.size()) << " to " << min(next_list_pos, file_data.size())-1 << " - protected" << endl;
     }
 
     // get frame headers
@@ -170,23 +172,22 @@ void AVICorruptor::applyCorruption() {
                 switch (rand_val) {
                 case 0:
                     for (int j = 0; j < burst_size; j++) {
-                        // bit flip
-                        bit_pos = flip_dist(rng);
-                        if (!protected_mask[pos + j])file_data[pos+j] ^= (1 << bit_pos);
-                    }
-                    break;
-                case 1:
-                    for (int j = 0; j < burst_size; j++) {
-                    //bits random substitution
+                        //bits random substitution
                         if (!protected_mask[pos + j]) {
                             file_data[pos + j] = (file_data[pos + j] & 0xF0) | (static_cast<uint8_t>(byte_dist(rng)) & 0x0F);
                         }
                     }
                     break;
+                case 1:
+                    for (int j = 0; j < burst_size; j++) {
+                        // set to 0x80 (gray)
+                        if (!protected_mask[pos + j]) file_data[pos + j] = 0x80;
+                    }
+                    break;
                 case 2:
                     for (int j = 0; j < burst_size; j++) {
-                    // set to 0x80 (gray)
-                        if (!protected_mask[pos + j]) file_data[pos + j] = 0x80;
+                        // invert color 
+                        if (!protected_mask[pos + j]) file_data[pos + j] = ~file_data[pos + j] + 1;
                     }
                     break;
                 case 3:
@@ -210,12 +211,12 @@ void AVICorruptor::applyCorruption() {
                     break;
                 
                 case 5:
-					// voltage spike simulation
+					// voltage spike / random noise
                     for (int j = 0; j < burst_size; j++) {
                         
                         if (!protected_mask[pos + j]) {
                             
-                            file_data[pos + j] ^= byte_dist(rng);
+                            ((pos+j)&1)==0 ? file_data[pos + j] ^= byte_dist(rng): file_data[pos + j] = byte_dist(rng);
                             
                         }
                     }
@@ -247,7 +248,6 @@ void AVICorruptor::applyCorruption() {
 }
 
 void AVICorruptor::printFileInfo() {
-    std::cout << "File size: " << file_data.size() << " bytes" << std::endl;
     std::cout << "Stages: " << stages.size() << std::endl;
     for (size_t i = 0; i < stages.size(); ++i) {
         std::cout << "Stage " << (i + 1) << ": "
@@ -257,6 +257,7 @@ void AVICorruptor::printFileInfo() {
     }
     std::cout << "Protected regions:" << std::endl;
     std::cout << "- Header: " << AVI_HEADER_PROTECT_SIZE << " bytes" << std::endl;
-    std::cout << "- idx1 index: " << AVI_TAIL_PROTECT_SIZE << " bytes" << std::endl;
+    std::cout << "- Tail: " << AVI_TAIL_PROTECT_SIZE << " bytes" << std::endl;
     std::cout << "- Frame headers: " << AVI_FRAME_HEADER_SIZE << " bytes" << std::endl;
+    std::cout << "- idx1 list: see idx1 list detection" << std::endl;
 }
