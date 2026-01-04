@@ -108,7 +108,7 @@ vector<MP4Corruptor::MdatInfo> MP4Corruptor::getMdatInfo() {
 void MP4Corruptor::precomputeProtectedMask() {
     protected_mask.resize(file_data.size(), false);
 
-    // 保护文件头区域
+    // protect file header
     for (size_t i = 0; i < min(size_t(1024), file_data.size()); i++) {
         protected_mask[i] = true;
     }

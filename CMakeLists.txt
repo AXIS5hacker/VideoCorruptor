@@ -22,10 +22,15 @@ SET (PROJECT_FILES
 )
 add_executable (VideoCorruptor ${PROJECT_FILES})
 
-if(MSVC)
-    add_compile_options(/source-charset:utf-8)
-    add_compile_options(/execution-charset:utf-8)
+#specify utf-8 encoding for windows
+if (MSVC)
+	target_compile_options(VideoCorruptor PRIVATE /source-charset:utf-8 /execution-charset:utf-8)
+else()
+    target_compile_options(VideoCorruptor PRIVATE -finput-charset=UTF-8 -fexec-charset=UTF-8)
 endif()
+
+
+
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET VideoCorruptor PROPERTY CXX_STANDARD 17)

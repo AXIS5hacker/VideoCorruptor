@@ -5,6 +5,9 @@
 using namespace std;
 int main(int argc, char* argv[]) {
     
+#if defined(_WIN32) || defined(_WIN64)
+    system("chcp 65001>nul");
+#endif
     if (argc != 4) {
 		cout << "The corruptor supports MP4 and AVI formats." << endl;
         cout << "usage: " << argv[0] << " <input file> <output file> [AVI|MP4]" << endl;
